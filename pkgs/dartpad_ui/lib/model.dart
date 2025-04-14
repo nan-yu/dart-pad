@@ -93,7 +93,7 @@ class AppModel {
 
   final GenAiManager genAiManager = GenAiManager();
 
-  AppModel() {
+  AppModel({bool useGenUi = false}) {
     consoleNotifier.addListener(_recalcLayout);
     void updateCanReload() =>
         canReload.value =
@@ -121,6 +121,7 @@ class AppModel {
     ) {
       splitViewDragState.value = value;
     });
+    genAiManager.useGenUi = useGenUi;
   }
 
   void appendLineToConsole(String str) {
@@ -466,14 +467,17 @@ class AppServices {
     return services.suggestFix(request);
   }
 
+  // Calling Gemini to generate dart/flutter source code
   Stream<String> generateCode(GenerateCodeRequest request) {
     return services.generateCode(request);
   }
 
-  Stream<String> generateUi(GenerateUiRequest request) {
+  // Calling GenUI to generate flutter source code
+  Future<GenerateUiResponse> generateUi(GenerateUiRequest request) {
     return services.generateUi(request);
   }
 
+  // Calling Gemini to update dart/flutter source code
   Stream<String> updateCode(UpdateCodeRequest request) {
     return services.updateCode(request);
   }
@@ -707,6 +711,7 @@ class ConsoleNotifier extends ChangeNotifier {
 enum GenAiState { standby, generating, awaitingAcceptReject }
 
 class GenAiManager {
+  late bool useGenUi;
   final ValueNotifier<GenAiState> state = ValueNotifier(GenAiState.standby);
   final ValueNotifier<Stream<String>> stream = ValueNotifier(
     Stream<String>.empty(),

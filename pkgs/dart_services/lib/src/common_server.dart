@@ -91,9 +91,9 @@ class CommonServerApi {
     router.post(r'/api/<apiVersion>/format', handleFormat);
     router.post(r'/api/<apiVersion>/document', handleDocument);
     router.post(r'/api/<apiVersion>/openInIDX', handleOpenInIdx);
-    router.post(r'/api/<apiVersion>/generateCode', generateCode);
-    router.post(r'/api/<apiVersion>/generateUi', generateUi);
-    router.post(r'/api/<apiVersion>/updateCode', updateCode);
+    router.post(r'/api/<apiVersion>/generateCode', generateCode); // Gemini
+    router.post(r'/api/<apiVersion>/generateUi', generateUi); // GenUI
+    router.post(r'/api/<apiVersion>/updateCode', updateCode); // Gemini
     router.post(r'/api/<apiVersion>/suggestFix', suggestFix);
     return router;
   }();
@@ -311,6 +311,7 @@ class CommonServerApi {
     );
   }
 
+  // Calling Gemini to generate dart/flutter source code
   Future<Response> generateCode(Request request, String apiVersion) async {
     if (apiVersion != api3) return unhandledVersion(apiVersion);
 
@@ -328,6 +329,7 @@ class CommonServerApi {
     );
   }
 
+  // Calling GenUI to generate flutter source code
   Future<Response> generateUi(Request request, String apiVersion) async {
     if (apiVersion != api3) return unhandledVersion(apiVersion);
 
@@ -335,14 +337,19 @@ class CommonServerApi {
       await request.readAsJson(),
     );
 
-    final resultStream = Stream.fromIterable([
-      await impl.genui.generateCode(prompt: generateUiRequest.prompt),
-    ]);
-
-    // TODO(polina-c): setup better streaming
-    return _streamResponse('generateUi', resultStream);
+    try {
+      final result = await serialize(() {
+        return impl.genui.generateCode(prompt: generateUiRequest.prompt);
+      });
+      return ok(result.toJson());
+    } catch (e) {
+      return Response.internalServerError(
+        body: 'Failed to generate flutter code from GenUI server. Error: $e',
+      );
+    }
   }
 
+  // Calling Gemini to update dart/flutter source code
   Future<Response> updateCode(Request request, String apiVersion) async {
     if (apiVersion != api3) return unhandledVersion(apiVersion);
 

@@ -42,6 +42,9 @@ void main() async {
   // Make sure that the google fonts don't load from http.
   GoogleFonts.config.allowRuntimeFetching = false;
 
+  // Ensure Flutter bindings are initialized
+  WidgetsFlutterBinding.ensureInitialized();
+
   runApp(const DartPadApp());
 }
 
@@ -285,7 +288,7 @@ class _DartPadMainPageState extends State<DartPadMainPage>
             ? Channel.forName(widget.initialChannel!)
             : null;
 
-    appModel = AppModel();
+    appModel = AppModel(useGenUi: widget.useGenui);
     appServices = AppServices(appModel, channel ?? Channel.defaultChannel);
 
     appServices.populateVersions();
@@ -747,18 +750,40 @@ class DartPadAppBar extends StatelessWidget implements PreferredSizeWidget {
       promptResponse.promptTextController.text,
     );
 
-    appModel.genAiManager.preGenAiSourceCode.value =
-        appModel.sourceCodeController.text;
-    appModel.genAiManager.enterGeneratingNew();
-
-    try {
-      if (widget.useGenui) {
-        appModel.genAiManager.startStream(
-          appServices.generateUi(
-            GenerateUiRequest(prompt: promptResponse.promptTextController.text),
-          ),
+    if (widget.useGenui) {
+      try {
+        final genuiResponse = appServices.generateUi(
+          GenerateUiRequest(prompt: promptResponse.promptTextController.text),
         );
-      } else {
+        final generateResponse = await showDialog<String>(
+          context: context,
+          builder:
+              (context) => GenuiPanel(
+                title: 'Generating New Code',
+                genuiResponse: genuiResponse,
+              ),
+        );
+
+        if (!context.mounted ||
+            generateResponse == null ||
+            generateResponse.isEmpty) {
+          return;
+        }
+
+        appModel.sourceCodeController.textNoScroll = generateResponse;
+        appServices.editorService!.focus();
+        appServices.performCompileAndReloadOrRun();
+      } catch (error) {
+        appModel.editorStatus.showToast('Error generating code');
+        appModel.appendError('Generating code issue: $error');
+      }
+    } else {
+      // Not using GenUI
+      appModel.genAiManager.preGenAiSourceCode.value =
+          appModel.sourceCodeController.text;
+      appModel.genAiManager.enterGeneratingNew();
+
+      try {
         appModel.genAiManager.startStream(
           appServices.generateCode(
             GenerateCodeRequest(
@@ -768,11 +793,11 @@ class DartPadAppBar extends StatelessWidget implements PreferredSizeWidget {
             ),
           ),
         );
+      } catch (error) {
+        appModel.editorStatus.showToast('Error generating code');
+        appModel.appendError('Generating code issue: $error');
+        appModel.genAiManager.enterStandby();
       }
-    } catch (error) {
-      appModel.editorStatus.showToast('Error generating code');
-      appModel.appendError('Generating code issue: $error');
-      appModel.genAiManager.enterStandby();
     }
   }
 }
@@ -956,7 +981,7 @@ class EditorWithButtons extends StatelessWidget {
                         ),
                         alignment: Alignment.topLeft,
                         padding: const EdgeInsets.all(denseSpacing),
-                        child: GeneratingCodePanel(
+                        child: GeminiCodePanel(
                           appModel: appModel,
                           appServices: appServices,
                         ),

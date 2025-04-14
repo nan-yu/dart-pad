@@ -60,12 +60,15 @@ class ServicesClient {
   Stream<String> suggestFix(SuggestFixRequest request) =>
       _requestPostStream('suggestFix', request.toJson());
 
+  // Calling Gemini to generate dart/flutter source code
   Stream<String> generateCode(GenerateCodeRequest request) =>
       _requestPostStream('generateCode', request.toJson());
 
-  Stream<String> generateUi(GenerateUiRequest request) =>
-      _requestPostStream('generateUi', request.toJson());
+  // Calling GenUI to generate flutter source code
+  Future<GenerateUiResponse> generateUi(GenerateUiRequest request) =>
+      _requestPost('generateUi', request.toJson(), GenerateUiResponse.fromJson);
 
+  // Calling Gemini to update dart/flutter source code
   Stream<String> updateCode(UpdateCodeRequest request) =>
       _requestPostStream('updateCode', request.toJson());
 

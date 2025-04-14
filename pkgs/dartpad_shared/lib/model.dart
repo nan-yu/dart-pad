@@ -487,6 +487,22 @@ class GenerateUiRequest {
 }
 
 @JsonSerializable()
+class GenerateUiResponse {
+  final String flutterCode;
+  final String compiledJsCode;
+
+  GenerateUiResponse({required this.flutterCode, required this.compiledJsCode});
+
+  factory GenerateUiResponse.fromJson(Map<String, Object?> json) =>
+      _$GenerateUiResponseFromJson(json);
+
+  Map<String, Object?> toJson() => _$GenerateUiResponseToJson(this);
+
+  @override
+  String toString() => 'GenerateUiResponse [$flutterCode] [$compiledJsCode]';
+}
+
+@JsonSerializable()
 class UpdateCodeRequest {
   final AppType appType;
   final String prompt;

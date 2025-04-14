@@ -15,6 +15,7 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:url_launcher/url_launcher.dart' as url_launcher;
 
 import 'editor/editor.dart';
+import 'genui/genui_payload_iframe_renderer.dart';
 import 'main.dart';
 import 'model.dart';
 import 'theme.dart';
@@ -471,8 +472,8 @@ class _PromptDialogState extends State<PromptDialog> {
   }
 }
 
-class GeneratingCodePanel extends StatefulWidget {
-  const GeneratingCodePanel({
+class GeminiCodePanel extends StatefulWidget {
+  const GeminiCodePanel({
     required this.appModel,
     required this.appServices,
     super.key,
@@ -482,10 +483,10 @@ class GeneratingCodePanel extends StatefulWidget {
   final AppServices appServices;
 
   @override
-  State<GeneratingCodePanel> createState() => _GeneratingCodePanelState();
+  State<GeminiCodePanel> createState() => _GeminiCodePanelState();
 }
 
-class _GeneratingCodePanelState extends State<GeneratingCodePanel> {
+class _GeminiCodePanelState extends State<GeminiCodePanel> {
   final _focusNode = FocusNode();
   StreamSubscription<String>? _subscription;
 
@@ -598,6 +599,214 @@ class _GeneratingCodePanelState extends State<GeneratingCodePanel> {
         );
       },
     );
+  }
+}
+
+class GenuiPanel extends StatefulWidget {
+  final String title;
+  final Future<GenerateUiResponse> genuiResponse;
+
+  const GenuiPanel({
+    super.key,
+    required this.title,
+    required this.genuiResponse,
+  });
+
+  @override
+  State<GenuiPanel> createState() => _GenuiPanelState();
+}
+
+class _GenuiPanelState extends State<GenuiPanel> {
+  bool _done = false;
+  late Future<GenerateUiResponse> _genuiResponseFuture;
+  late String _generatedFlutterCode;
+  final _focusNode = FocusNode();
+  final _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _genuiResponseFuture = widget.genuiResponse;
+    _setupFutureListener();
+  }
+
+  void _setupFutureListener() {
+    // Reset state variables when restarting to listen to the future
+    if (mounted) {
+      setState(() {
+        _done = false;
+        _generatedFlutterCode = '';
+      });
+    }
+
+    _genuiResponseFuture
+        .then((responseValue) {
+          if (mounted) {
+            setState(() {
+              _generatedFlutterCode = responseValue.flutterCode.trim();
+            });
+          }
+        })
+        .catchError((error) {
+          if (mounted) {
+            debugPrint('DEBUG ONLY: Error fetching GenerateUiResponse: $error');
+          }
+        })
+        .whenComplete(() {
+          if (mounted) {
+            setState(() {
+              _done = true;
+            });
+          }
+        });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return PointerInterceptor(
+      child: AlertDialog(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(color: theme.colorScheme.outline),
+        ),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(widget.title),
+            if (!_done) const CircularProgressIndicator(),
+          ],
+        ),
+        contentTextStyle: theme.textTheme.bodyMedium,
+        contentPadding: const EdgeInsets.fromLTRB(24, defaultSpacing, 24, 8),
+        content: SizedBox(
+          width: 1200,
+          child: FutureBuilder(
+            future: _genuiResponseFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 32.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              } else if (snapshot.hasError) {
+                return Center(
+                  child: Text(
+                    'Error: ${snapshot.error}',
+                    style: TextStyle(color: theme.colorScheme.error),
+                  ),
+                );
+              } else if (snapshot.hasData) {
+                final genuiReponse = snapshot.data!;
+                return Row(
+                  children: [
+                    // Left Column: ReadOnlyCodeWidget with Scrollbar
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: theme.colorScheme.outline),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Scrollbar(
+                          controller: _scrollController,
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            controller: _scrollController,
+                            padding: const EdgeInsets.all(8.0),
+                            child: Focus(
+                              autofocus: true,
+                              focusNode: _focusNode,
+                              child: ReadOnlyCodeWidget(_generatedFlutterCode),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16), // Space between columns
+                    // Right Column: Rendered output
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: theme.colorScheme.outline),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: GenuiPayloadIframeRenderer(
+                          ddcPayload: genuiReponse.compiledJsCode.trim(),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              } else {
+                return const Center(child: Text('Completed with no data'));
+              }
+            },
+          ),
+        ),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: RichText(
+                    text: TextSpan(
+                      text: 'Powered by ',
+                      style: DefaultTextStyle.of(context).style,
+                      children: [
+                        TextSpan(
+                          text: 'Google AI',
+                          style: TextStyle(color: theme.colorScheme.primary),
+                          recognizer:
+                              TapGestureRecognizer()
+                                ..onTap = () {
+                                  url_launcher.launchUrl(
+                                    Uri.parse('https://ai.google.dev/'),
+                                  );
+                                },
+                        ),
+                        TextSpan(
+                          text: ' and the Gemini API',
+                          style: DefaultTextStyle.of(context).style,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: _done ? _onAcceptAndRun : null,
+                child: Text(
+                  'Accept',
+                  style: TextStyle(color: !_done ? theme.disabledColor : null),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _onAcceptAndRun() {
+    assert(_done);
+    Navigator.pop(context, _generatedFlutterCode);
   }
 }
 
