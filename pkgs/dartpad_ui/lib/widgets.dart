@@ -5,8 +5,6 @@
 import 'dart:async';
 
 import 'package:dartpad_shared/model.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -471,8 +469,8 @@ class _PromptDialogState extends State<PromptDialog> {
   }
 }
 
-class GeneratingCodePanel extends StatefulWidget {
-  const GeneratingCodePanel({
+class GeminiCodePanel extends StatefulWidget {
+  const GeminiCodePanel({
     required this.appModel,
     required this.appServices,
     super.key,
@@ -482,10 +480,10 @@ class GeneratingCodePanel extends StatefulWidget {
   final AppServices appServices;
 
   @override
-  State<GeneratingCodePanel> createState() => _GeneratingCodePanelState();
+  State<GeminiCodePanel> createState() => _GeminiCodePanelState();
 }
 
-class _GeneratingCodePanelState extends State<GeneratingCodePanel> {
+class _GeminiCodePanelState extends State<GeminiCodePanel> {
   final _focusNode = FocusNode();
   StreamSubscription<String>? _subscription;
 
@@ -596,6 +594,104 @@ class _GeneratingCodePanelState extends State<GeneratingCodePanel> {
             ),
           ],
         );
+      },
+    );
+  }
+}
+
+class GenuiCodePanel extends StatefulWidget {
+  const GenuiCodePanel({
+    required this.appModel,
+    required this.appServices,
+    super.key,
+  });
+
+  final AppModel appModel;
+  final AppServices appServices;
+
+  @override
+  State<GenuiCodePanel> createState() => _GenuiCodePanelState();
+}
+
+class _GenuiCodePanelState extends State<GenuiCodePanel> {
+  final _focusNode = FocusNode();
+  late Future<GenerateUiResponse> _genuiResponseFuture;
+  late String _generatedFlutterCode;
+
+  @override
+  void initState() {
+    super.initState();
+    _genuiResponseFuture = widget.appModel.genAiManager.genuiResponse.value!;
+    _setupFutureListener();
+  }
+
+  void _setupFutureListener() {
+    // Reset state variables when restarting to listen to the future
+    if (mounted) {
+      setState(() {
+        _generatedFlutterCode = '';
+      });
+    }
+
+    late String genuiDDCPayload;
+    _genuiResponseFuture!
+        .then((responseValue) {
+          if (mounted) {
+            setState(() {
+              _generatedFlutterCode = responseValue.flutterCode.trim();
+              genuiDDCPayload = responseValue.compiledJsCode.trim();
+            });
+          }
+        })
+        .catchError((error) {
+          if (mounted) {
+            widget.appModel.editorStatus.showToast('Error generating code');
+            widget.appModel.appendError(
+              'There was an error generating your code, please try again.',
+            );
+            widget.appModel.genAiManager.enterStandby();
+          }
+        })
+        .whenComplete(() {
+          if (mounted) {
+            setState(() {
+              widget.appModel.genAiManager.enterAwaitingAcceptReject();
+              _focusNode.requestFocus();
+              widget.appModel.sourceCodeController.textNoScroll =
+                  _generatedFlutterCode;
+              widget.appModel.genAiManager.setGenuiDDCPayload(genuiDDCPayload);
+              widget.appServices.performCompileAndRun(); // TODO: is this okay?
+            });
+          }
+        });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return FutureBuilder(
+      future: _genuiResponseFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return GoldenRatioCenter(
+            child: AnimatedContainer(
+              duration: animationDelay,
+              curve: animationCurve,
+              child: CircularProgressIndicator(),
+            ),
+          );
+        } else if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error: ${snapshot.error}',
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          );
+        } else if (snapshot.hasData) {
+          return ReadOnlyCodeWidget(_generatedFlutterCode);
+        } else {
+          return const Center(child: Text('Completed with no data'));
+        }
       },
     );
   }

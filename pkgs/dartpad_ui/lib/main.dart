@@ -23,6 +23,7 @@ import 'embed.dart';
 import 'enable_gen_ai.dart';
 import 'execution/execution.dart';
 import 'extensions.dart';
+import 'genui/genui_payload_iframe_embedder.dart';
 import 'keys.dart' as keys;
 import 'local_storage.dart';
 import 'model.dart';
@@ -254,6 +255,11 @@ class _DartPadMainPageState extends State<DartPadMainPage>
   final ValueKey<String> _consoleKey = const ValueKey('console');
   final ValueKey<String> _tabBarKey = const ValueKey('tab-bar');
   final ValueKey<String> _executionStackKey = const ValueKey('execution-stack');
+
+  final ValueKey<String> _genuiEmbedderStackKey = const ValueKey(
+    'genui-embedder-stack',
+  );
+  final ValueKey<String> _previewStackKey = const ValueKey('preview-stack');
   final ValueKey<String> _scaffoldKey = const ValueKey('scaffold');
 
   @override
@@ -345,6 +351,36 @@ class _DartPadMainPageState extends State<DartPadMainPage>
       key: _executionWidgetKey,
     );
 
+    final genuiEmbedderStack = Stack(
+      key: _genuiEmbedderStackKey,
+      children: [
+        ValueListenableBuilder(
+          valueListenable: appModel.genAiManager.genuiDDCPayload,
+          builder: (context, String ddcPayload, _) {
+            if (ddcPayload.isEmpty) {
+              return SizedBox(width: 0, height: 0);
+            }
+            return GenuiPayloadIframeEmbedder(ddcPayload: ddcPayload);
+          },
+        ),
+      ],
+    );
+
+    final previewStack = Stack(
+      key: _previewStackKey,
+      children: [
+        ValueListenableBuilder(
+          valueListenable: appModel.genAiManager.embedder,
+          builder: (context, Embedder embedder, _) {
+            return IndexedStack(
+              index: embedder == Embedder.dartpad ? 0 : 1,
+              children: [executionWidget, genuiEmbedderStack],
+            );
+          },
+        ),
+      ],
+    );
+
     final loadingOverlay = LoadingOverlay(
       appModel: appModel,
       key: _loadingOverlayKey,
@@ -381,17 +417,17 @@ class _DartPadMainPageState extends State<DartPadMainPage>
                 gripSize: defaultGripSize,
                 controller: consoleSplitter,
                 children: [
-                  executionWidget,
+                  previewStack,
                   ConsoleWidget(
                     key: _consoleKey,
                     output: appModel.consoleNotifier,
                   ),
                 ],
               ),
-              LayoutMode.justDom => executionWidget,
+              LayoutMode.justDom => previewStack,
               LayoutMode.justConsole => Column(
                 children: [
-                  SizedBox(height: 0, width: 0, child: executionWidget),
+                  SizedBox(height: 0, width: 0, child: previewStack),
                   Expanded(
                     child: ConsoleWidget(
                       key: _consoleKey,
@@ -749,16 +785,18 @@ class DartPadAppBar extends StatelessWidget implements PreferredSizeWidget {
 
     appModel.genAiManager.preGenAiSourceCode.value =
         appModel.sourceCodeController.text;
-    appModel.genAiManager.enterGeneratingNew();
 
     try {
       if (widget.useGenui) {
-        appModel.genAiManager.startStream(
+        appModel.genAiManager.enterGeneratingNew(Embedder.genui);
+        appModel.genAiManager.setGenuiResponse(
           appServices.generateUi(
             GenerateUiRequest(prompt: promptResponse.promptTextController.text),
           ),
         );
       } else {
+        // Not using GenUI
+        appModel.genAiManager.enterGeneratingNew(Embedder.dartpad);
         appModel.genAiManager.startStream(
           appServices.generateCode(
             GenerateCodeRequest(
@@ -949,6 +987,19 @@ class EditorWithButtons extends StatelessWidget {
 
                     if (genAiState == GenAiState.standby) ...[
                       SizedBox(width: 0, height: 0),
+                    ] else if (appModel.genAiManager.embedder.value ==
+                        Embedder.dartpad) ...[
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                        ),
+                        alignment: Alignment.topLeft,
+                        padding: const EdgeInsets.all(denseSpacing),
+                        child: GeminiCodePanel(
+                          appModel: appModel,
+                          appServices: appServices,
+                        ),
+                      ),
                     ] else ...[
                       Container(
                         decoration: BoxDecoration(
@@ -956,7 +1007,7 @@ class EditorWithButtons extends StatelessWidget {
                         ),
                         alignment: Alignment.topLeft,
                         padding: const EdgeInsets.all(denseSpacing),
-                        child: GeneratingCodePanel(
+                        child: GenuiCodePanel(
                           appModel: appModel,
                           appServices: appServices,
                         ),

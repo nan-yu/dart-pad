@@ -5,6 +5,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dartpad_shared/model.dart' as api;
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
 
@@ -36,11 +37,12 @@ class _GenuiEnv {
   /// Returns the generated Flutter code.
   ///
   /// If not enabled or fails, logs error and returns null.
-  Future<String?> request({required String prompt}) async {
+  Future<api.GenerateUiResponse> request({required String prompt}) async {
     final uri = apiUrl;
     if (uri == null) {
-      _logger.warning('Genui features at $name are disabled');
-      return null;
+      throw InvalidGenUiPayloadException(
+        'Genui features at $name are disabled',
+      );
     }
 
     final response = await http.post(
@@ -48,23 +50,48 @@ class _GenuiEnv {
       headers: <String, String>{
         'Content-Type': 'application/json; charset=UTF-8',
       },
-      body: jsonEncode(<String, String>{
-        'userPrompt': prompt,
-        'modelUrl': 'genuigemini://models/gemini-2.0-flash',
-      }),
+      body: jsonEncode(<String, String>{'userPrompt': prompt}),
     );
 
     if (response.statusCode != 200) {
-      _logger.warning(
+      throw InvalidGenUiPayloadException(
         'Failed to generate ui at genui, $name: ${response.statusCode}, ${response.body}',
       );
-      return null;
     }
 
-    final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-    final flutterCode = decoded['flutterCode'] as String;
+    return decodeResponse(response.body);
+  }
+}
 
-    return flutterCode;
+class InvalidGenUiPayloadException implements Exception {
+  final String message;
+  InvalidGenUiPayloadException(this.message);
+
+  @override
+  String toString() => 'InvalidGenUiPayloadException: $message';
+}
+
+api.GenerateUiResponse decodeResponse(String response) {
+  try {
+    final decoded = jsonDecode(response) as Map<String, dynamic>;
+    final flutterCode = decoded['flutterCode'];
+    // ignore: avoid_dynamic_calls
+    final compiledJsCode = decoded['payload']?['ddc']?['compiledJsCode'];
+
+    if (flutterCode is! String || compiledJsCode is! String) {
+      throw InvalidGenUiPayloadException(
+        'flutter code or compiled JavaScript code missing from the response',
+      );
+    }
+
+    return api.GenerateUiResponse(
+      flutterCode: flutterCode,
+      compiledJsCode: compiledJsCode,
+    );
+  } catch (e, stackTrace) {
+    throw InvalidGenUiPayloadException(
+      'Error parsing GenUI response: $e\n$stackTrace',
+    );
   }
 }
 
@@ -83,23 +110,26 @@ class GenUi {
       name: 'staging',
       apiKeyVarName: 'GENUI_API_KEY_STAGING',
       url:
-          'https://autopush-devgenui.sandbox.googleapis.com/v1beta1/firstparty/generateidecode',
+          'https://staging-devgenui.sandbox.googleapis.com/v1internal/firstparty/generateidecode',
     );
   }
 
-  Future<String> generateCode({required String prompt}) async {
-    final prodResult = await _prodGenui.request(prompt: prompt);
-
-    if (prodResult != null) {
+  Future<api.GenerateUiResponse> generateCode({required String prompt}) async {
+    try {
+      final prodResult = await _prodGenui.request(prompt: prompt);
       return prodResult;
+    } catch (e) {
+      _logger.warning(
+        'Failed to generate code from GenUI production: $e. Falling back to staging service',
+      );
     }
 
-    final stagingResult = await _stagingGenui.request(prompt: prompt);
-
-    if (stagingResult == null) {
-      throw Exception('Failed to generate code from GenUI');
+    try {
+      final stagingResult = await _stagingGenui.request(prompt: prompt);
+      return stagingResult;
+    } catch (e) {
+      _logger.warning('Failed to generate code from GenUI: $e');
+      rethrow;
     }
-
-    return stagingResult;
   }
 }

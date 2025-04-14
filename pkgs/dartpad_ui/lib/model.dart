@@ -466,14 +466,17 @@ class AppServices {
     return services.suggestFix(request);
   }
 
+  // Calling Gemini to generate dart/flutter source code
   Stream<String> generateCode(GenerateCodeRequest request) {
     return services.generateCode(request);
   }
 
-  Stream<String> generateUi(GenerateUiRequest request) {
+  // Calling GenUI to generate flutter source code
+  Future<GenerateUiResponse> generateUi(GenerateUiRequest request) {
     return services.generateUi(request);
   }
 
+  // Calling Gemini to update dart/flutter source code
   Stream<String> updateCode(UpdateCodeRequest request) {
     return services.updateCode(request);
   }
@@ -706,6 +709,8 @@ class ConsoleNotifier extends ChangeNotifier {
 
 enum GenAiState { standby, generating, awaitingAcceptReject }
 
+enum Embedder { dartpad, genui }
+
 class GenAiManager {
   final ValueNotifier<GenAiState> state = ValueNotifier(GenAiState.standby);
   final ValueNotifier<Stream<String>> stream = ValueNotifier(
@@ -726,6 +731,10 @@ class GenAiManager {
       ImageAttachmentsManager();
   final ValueNotifier<bool> isGeneratingNewProject = ValueNotifier(true);
   final ValueNotifier<String> preGenAiSourceCode = ValueNotifier('');
+  final ValueNotifier<String> genuiDDCPayload = ValueNotifier('');
+  final ValueNotifier<Embedder> embedder = ValueNotifier(Embedder.dartpad);
+  final ValueNotifier<Future<GenerateUiResponse>?> genuiResponse =
+      ValueNotifier(null);
 
   GenAiManager();
 
@@ -733,16 +742,18 @@ class GenAiManager {
     return state;
   }
 
-  void enterGeneratingNew() {
+  void enterGeneratingNew(Embedder embedder) {
     state.value = GenAiState.generating;
     isGeneratingNewProject.value = true;
     activePromptTextController = newCodePromptController;
     activeImageAttachmentsManager = newCodeImageAttachmentsManager;
+    this.embedder.value = embedder;
   }
 
   void enterGeneratingEdit() {
     state.value = GenAiState.generating;
     isGeneratingNewProject.value = false;
+    embedder.value = Embedder.dartpad;
     activePromptTextController = codeEditPromptController;
     activeImageAttachmentsManager = codeEditImageAttachmentsManager;
   }
@@ -751,6 +762,9 @@ class GenAiManager {
     state.value = GenAiState.standby;
     streamIsDone.value = true;
     streamBuffer.value.clear();
+    genuiDDCPayload.value = '';
+    genuiResponse.value = null;
+    embedder.value = Embedder.dartpad;
   }
 
   void enterAwaitingAcceptReject() {
@@ -785,5 +799,13 @@ class GenAiManager {
   void setStreamBufferValue(String text) {
     streamBuffer.value.clear();
     streamBuffer.value.write(text);
+  }
+
+  void setGenuiDDCPayload(String ddcPayload) {
+    genuiDDCPayload.value = ddcPayload;
+  }
+
+  void setGenuiResponse(Future<GenerateUiResponse> genuiResponse) {
+    this.genuiResponse.value = genuiResponse;
   }
 }

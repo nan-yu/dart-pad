@@ -373,6 +373,18 @@ GenerateUiRequest _$GenerateUiRequestFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$GenerateUiRequestToJson(GenerateUiRequest instance) =>
     <String, dynamic>{'prompt': instance.prompt};
 
+GenerateUiResponse _$GenerateUiResponseFromJson(Map<String, dynamic> json) =>
+    GenerateUiResponse(
+      flutterCode: json['flutterCode'] as String? ?? '',
+      compiledJsCode: (json['compiledJsCode'] as String?) ?? '',
+    );
+
+Map<String, dynamic> _$GenerateUiResponseToJson(GenerateUiResponse instance) =>
+    <String, dynamic>{
+      'flutterCode': instance.flutterCode,
+      'compiledJsCode': instance.compiledJsCode,
+    };
+
 UpdateCodeRequest _$UpdateCodeRequestFromJson(Map<String, dynamic> json) =>
     UpdateCodeRequest(
       appType: $enumDecode(_$AppTypeEnumMap, json['appType']),
